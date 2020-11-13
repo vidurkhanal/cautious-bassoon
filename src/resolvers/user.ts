@@ -7,6 +7,7 @@ import {
   InputType,
   Mutation,
   ObjectType,
+  Query,
   Resolver,
 } from "type-graphql";
 import argon2 from "argon2";
@@ -38,10 +39,19 @@ class UserResponse {
 
 @Resolver()
 export class UserResolver {
+  @Query(()=>User,{nullable:true})
+  async me(@Ctx(){req,em}:MyContext){
+    if(!req.session.userId){
+      return null
+    }
+    const user = await em.findOne(User,{id:req.session.userId})
+    return user
+  }
+
   @Mutation(() => UserResponse)
   async register(
     @Arg("options") options: UsernamePasswordInput,
-    @Ctx() { em }: MyContext
+    @Ctx() { req,em }: MyContext
   ): Promise<UserResponse> {
     if (options.username.length <= 2) {
       return {
@@ -53,7 +63,7 @@ export class UserResolver {
         ],
       };
     }
-    if (options.username.length <= 5) {
+    if (options.password.length <= 5) {
       return {
         errors: [
           {
@@ -63,6 +73,7 @@ export class UserResolver {
         ],
       };
     }
+
     const hashedPassword = await argon2.hash(options.password);
     const user = em.create(User, {
       username: options.username,
@@ -71,6 +82,7 @@ export class UserResolver {
     try {
       await em.persistAndFlush(user);
     } catch (err) {
+      console.log(err.message);;
       if (err.code === "23505" || err.detail.includes("already exists")) {
         return {
           errors: [
@@ -82,6 +94,9 @@ export class UserResolver {
         };
       }
     }
+
+    req.session.userId = user.id;
+
     return { user };
   }
 
